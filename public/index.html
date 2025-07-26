@@ -1,45 +1,219 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Chat</title>
-  </head>
-  <body>
-    <h2>WebSocket Chat</h2>
+<head>
+  <title>Chat</title>
+  <style>
+    #loginBox, #chatUI {
+      margin: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>WebSocket Chat</h2>
+
+  <div id="loginBox">
+    <input id="loginUser" placeholder="Username" />
+    <input id="loginPass" type="password" placeholder="Password" />
+    <button onclick="login()">Log In</button>
+  </div>
+
+  <div id="chatUI" style="display:none;">
     <input id="msgInput" placeholder="Type a message..." />
     <button onclick="sendMessage()">Send</button>
+    <br/><br/>
+    <input type="file" id="imgInput" accept="image/*" />
+    <button onclick="sendImage()">Send Image</button>
+    <br/><br/>
+    <button onclick="shareMessages()">Share My Saved Messages</button>
     <ul id="messages"></ul>
+  </div>
 
-    <script>
-        const protocol = location.protocol === "https:" ? "wss" : "ws";
-        const socket = new WebSocket(`${protocol}://${location.host}`);
+<script>
+let currentUser = null;
+const userCache = new Map();
+const protocol = location.protocol === "https:" ? "wss" : "ws";
+const socket = new WebSocket(`${protocol}://${location.host}`);
+const dbName = "chatDB";
+let db = null;
+let savingEnabled = false;
 
-        const userName = prompt("Enter your name:") || "Anonymous";
+const warnEl = document.createElement('div');
+warnEl.style.background = "#ffcccc";
+warnEl.style.padding = "10px";
+warnEl.style.textAlign = "center";
+warnEl.style.display = "none";
+warnEl.textContent = "⚠️ IndexedDB not supported — messages won’t be saved locally.";
+document.body.prepend(warnEl);
 
-        socket.onmessage = function (event) {
-            event.data.text().then(raw => {
-                const data = JSON.parse(raw);
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>@${data.name}</strong> ${new Date(data.time).toLocaleTimeString()}: ${data.message}`;
-                document.getElementById('messages').appendChild(li);
-            });
-        };
+if (!window.indexedDB) {
+  warnEl.style.display = "block";
+} else {
+  const request = indexedDB.open(dbName, 1);
+  request.onupgradeneeded = event => {
+    db = event.target.result;
+    db.createObjectStore("messages", { keyPath: "id" });
+  };
+  request.onsuccess = () => {
+    db = request.result;
+    savingEnabled = true;
+    loadAndRenderMessages();
+  };
+  request.onerror = () => warnEl.style.display = "block";
+}
 
-        function sendMessage() {
-            const input = document.getElementById('msgInput');
-            if (socket.readyState === WebSocket.OPEN) {
-            const message = {
-                name: userName,
-                message: input.value,
-                time: Date.now()
-            };
-            socket.send(JSON.stringify(message));
-            input.value = '';
-            } else {
-                alert('WebSocket not connected yet.');
-            }
-        }
-    </script>
+function login() {
+  const username = document.getElementById('loginUser').value;
+  const password = document.getElementById('loginPass').value;
 
+  fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  })
+  .then(res => res.json())
+  .then(user => {
+    if (user.error) return alert(user.error);
+    currentUser = user;
+    userCache.set(user.username, user);
+    document.getElementById('loginBox').style.display = 'none';
+    document.getElementById('chatUI').style.display = 'block';
+  })
+  .catch(() => alert('Login failed.'));
+}
 
-  </body>
+function getUser(username) {
+  if (userCache.has(username)) return Promise.resolve(userCache.get(username));
+  return fetch(`/api/user?username=${encodeURIComponent(username)}`)
+    .then(res => res.json())
+    .then(user => {
+      userCache.set(username, user);
+      return user;
+    });
+}
+
+function loadAndRenderMessages() {
+  if (!savingEnabled) return;
+  const tx = db.transaction("messages", "readonly");
+  const store = tx.objectStore("messages");
+  const req = store.getAll();
+  req.onsuccess = () => renderMessages(req.result);
+}
+
+function saveMessage(msg) {
+  if (!savingEnabled) return;
+  const tx = db.transaction("messages", "readwrite");
+  const store = tx.objectStore("messages");
+  store.put(msg);
+}
+
+function deleteMessage(id) {
+  if (!savingEnabled) return;
+  const tx = db.transaction("messages", "readwrite");
+  const store = tx.objectStore("messages");
+  store.delete(id);
+  loadAndRenderMessages();
+}
+
+function handleIncoming(msg) {
+  msg.id = `${msg.name}_${msg.time}`;
+  if (!savingEnabled) return renderMessages([msg]);
+
+  const tx = db.transaction("messages", "readwrite");
+  const store = tx.objectStore("messages");
+  const getReq = store.get(msg.id);
+
+  getReq.onsuccess = () => {
+    const existing = getReq.result;
+    if (existing) {
+      if (msg.message) existing.message += `\n${msg.message}`;
+      if (msg.image) existing.image = msg.image;
+      store.put(existing);
+    } else {
+      store.put(msg);
+    }
+    loadAndRenderMessages();
+  };
+}
+
+function renderMessages(messages) {
+  const container = document.getElementById('messages');
+  container.innerHTML = "";
+  messages.sort((a, b) => a.time - b.time);
+
+  messages.forEach(msg => {
+    getUser(msg.name).then(user => {
+      const li = document.createElement('li');
+      li.innerHTML = `<img src="${user.profile_picture}" width="32" style="vertical-align: middle;" /> <strong>${msg.name}</strong> @ ${new Date(msg.time).toLocaleTimeString()}:`;
+
+      if (msg.image) {
+        const img = document.createElement('img');
+        img.src = msg.image;
+        img.style.maxWidth = '200px';
+        li.appendChild(img);
+      }
+      if (msg.message) {
+        const p = document.createElement('p');
+        p.textContent = msg.message;
+        li.appendChild(p);
+      }
+      if (savingEnabled) {
+        const btn = document.createElement('button');
+        btn.textContent = "🗑 Delete";
+        btn.onclick = () => deleteMessage(msg.id);
+        li.appendChild(btn);
+      }
+      container.appendChild(li);
+    });
+  });
+}
+
+socket.onmessage = async (event) => {
+  const raw = await event.data.text();
+  const msg = JSON.parse(raw);
+  handleIncoming(msg);
+};
+
+function sendMessage() {
+  const input = document.getElementById('msgInput');
+  if (!currentUser || socket.readyState !== WebSocket.OPEN || !input.value) return;
+
+  const msg = {
+    name: currentUser.username,
+    message: input.value,
+    time: Date.now(),
+    image: null
+  };
+  socket.send(JSON.stringify(msg));
+  input.value = "";
+}
+
+function sendImage() {
+  const file = document.getElementById('imgInput').files[0];
+  if (!currentUser || !file || socket.readyState !== WebSocket.OPEN) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const msg = {
+      name: currentUser.username,
+      message: "",
+      image: reader.result,
+      time: Date.now()
+    };
+    socket.send(JSON.stringify(msg));
+  };
+  reader.readAsDataURL(file);
+}
+
+function shareMessages() {
+  if (!currentUser || !savingEnabled) return alert("Cannot share — not logged in or saving unavailable.");
+  const tx = db.transaction("messages", "readonly");
+  const store = tx.objectStore("messages");
+  const req = store.getAll();
+  req.onsuccess = () => {
+    req.result.forEach(m => socket.send(JSON.stringify(m)));
+  };
+}
+</script>
+</body>
 </html>
