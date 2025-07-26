@@ -1,5 +1,5 @@
 const express = require('express');
-const fetch = require('node-fetch'); 
+import fetch from 'node-fetch';
 const http = require('http');
 const WebSocket = require('ws');
 
