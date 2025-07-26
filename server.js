@@ -34,6 +34,30 @@ app.get('/api/user', async (req, res) => {
   }
 });
 
+// app.post('/api/login', async (req, res) => {
+//   const { username, password } = req.body;
+
+//   if (!username || !password) {
+//     return res.status(400).json({ error: 'Missing username or password' });
+//   }
+
+//   try {
+//     const loginRes = await fetch('https://nemeleon.free.nf/chat_api/login.php', {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/x-www-form-urlencoded'
+//       },
+//       body: new URLSearchParams({ username, password })
+//     });
+
+//     const data = await loginRes.json();
+//     res.status(loginRes.status).json(data);
+//   } catch (err) {
+//     console.error('Login proxy error:', err);
+//     res.status(500).json({ error: 'Login failed due to server error' });
+//   }
+// });
+
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -50,14 +74,22 @@ app.post('/api/login', async (req, res) => {
       body: new URLSearchParams({ username, password })
     });
 
-    const data = await loginRes.json();
+    const contentType = loginRes.headers.get('content-type');
+
+    const text = await loginRes.text(); // get raw body
+    console.log('📥 Raw response from PHP API:\n', text);
+
+    if (!contentType || !contentType.includes('application/json')) {
+      return res.status(502).send(`Invalid response from login API:\n${text}`);
+    }
+
+    const data = JSON.parse(text);
     res.status(loginRes.status).json(data);
   } catch (err) {
     console.error('Login proxy error:', err);
     res.status(500).json({ error: 'Login failed due to server error' });
   }
 });
-
 
 
 
