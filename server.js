@@ -3,17 +3,21 @@ const http = require('http');
 const WebSocket = require('ws');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcrypt');
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
 const { pool } = require('./db');
 
-// const fetch = (...args) =>
-//   import('node-fetch').then(({ default: fetch }) => fetch(...args));
+
+const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static('public'));
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+// const fetch = (...args) =>
+//   import('node-fetch').then(({ default: fetch }) => fetch(...args));
+
 
 // Session (super simple for demo)
 const sessions = new Map();
@@ -95,5 +99,8 @@ wss.on('connection', (ws) => {
   });
 });
 
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
