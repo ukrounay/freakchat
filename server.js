@@ -1,101 +1,86 @@
 const express = require('express');
-const fetch = (...args) =>
-  import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const http = require('http');
 const WebSocket = require('ws');
-
-
+const cookieParser = require('cookie-parser');
+const bcrypt = require('bcrypt');
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+const { pool } = require('./db');
 
-
-
-// Proxy
+// const fetch = (...args) =>
+//   import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 app.use(express.json());
+app.use(cookieParser());
+app.use(express.static('public'));
 
-app.get('/api/user', async (req, res) => {
-  const username = req.query.username;
-  if (!username) {
-    return res.status(400).json({ error: 'Missing username' });
-  }
+// Session (super simple for demo)
+const sessions = new Map();
+
+// SIGNUP
+app.post('/api/signup', async (req, res) => {
+  const { username, password, email } = req.body;
+
+  const hash = await bcrypt.hash(password, 10);
 
   try {
-    const externalRes = await fetch(`https://nemeleon.free.nf/chat_api/user.php?username=${encodeURIComponent(username)}`);
-    if (!externalRes.ok) {
-      return res.status(502).json({ error: 'Failed to fetch external API' });
-    }
-    const data = await externalRes.json();
-    res.json(data);
+    await pool.query(
+      `INSERT INTO users (username, password, email) VALUES ($1, $2, $3)`,
+      [username, hash, email]
+    );
+    res.json({ success: true });
   } catch (err) {
-    console.error('Proxy fetch error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(400).json({ error: err.message });
   }
 });
 
-// app.post('/api/login', async (req, res) => {
-//   const { username, password } = req.body;
-
-//   if (!username || !password) {
-//     return res.status(400).json({ error: 'Missing username or password' });
-//   }
-
-//   try {
-//     const loginRes = await fetch('https://nemeleon.free.nf/chat_api/login.php', {
-//       method: 'POST',
-//       headers: {
-//         'Content-Type': 'application/x-www-form-urlencoded'
-//       },
-//       body: new URLSearchParams({ username, password })
-//     });
-
-//     const data = await loginRes.json();
-//     res.status(loginRes.status).json(data);
-//   } catch (err) {
-//     console.error('Login proxy error:', err);
-//     res.status(500).json({ error: 'Login failed due to server error' });
-//   }
-// });
-
+// LOGIN
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Missing username or password' });
+  const result = await pool.query(`SELECT * FROM users WHERE username = $1`, [username]);
+  const user = result.rows[0];
+
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ error: "Invalid login" });
   }
 
-  try {
-    const loginRes = await fetch('https://nemeleon.free.nf/chat_api/login.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({ username, password })
-    });
-
-    const contentType = loginRes.headers.get('content-type');
-
-    const text = await loginRes.text(); // get raw body
-    console.log('📥 Raw response from PHP API:\n', text);
-
-    if (!contentType || !contentType.includes('application/json')) {
-      return res.status(502).send(`Invalid response from login API:\n${text}`);
-    }
-
-    const data = JSON.parse(text);
-    res.status(loginRes.status).json(data);
-  } catch (err) {
-    console.error('Login proxy error:', err);
-    res.status(500).json({ error: 'Login failed due to server error' });
-  }
+  const token = crypto.randomUUID();
+  sessions.set(token, user.username);
+  res.cookie('token', token, { httpOnly: true });
+  res.json({ success: true });
 });
+
+// LOGOUT
+app.post('/api/logout', (req, res) => {
+  const token = req.cookies.token;
+  sessions.delete(token);
+  res.clearCookie('token');
+  res.json({ success: true });
+});
+
+// CURRENT USER
+app.get('/api/me', async (req, res) => {
+  const username = sessions.get(req.cookies.token);
+  if (!username) return res.status(401).json({ error: "Not logged in" });
+
+  const result = await pool.query(`SELECT username, email, about, profile_picture FROM users WHERE username = $1`, [username]);
+  res.json(result.rows[0]);
+});
+
+// GET USER BY USERNAME
+app.get('/api/user/:username', async (req, res) => {
+  const result = await pool.query(`SELECT username, about, profile_picture FROM users WHERE username = $1`, [req.params.username]);
+  if (result.rowCount === 0) return res.status(404).json({ error: "User not found" });
+  res.json(result.rows[0]);
+});
+
+
 
 
 
 // Web Socket
-
-app.use(express.static('public'));
 
 wss.on('connection', (ws) => {
   console.log('Client connected');
@@ -110,6 +95,5 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(3000, () => {
-  console.log('Server started on http://localhost:3000');
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

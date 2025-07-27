@@ -1,0 +1,12 @@
+<h2>Lookup User</h2>
+<input id="u" placeholder="Username" />
+<button onclick="lookup()">Go</button>
+<pre id="result"></pre>
+
+<script>
+async function lookup() {
+  const res = await fetch('/api/user/' + encodeURIComponent(document.getElementById('u').value));
+  const data = await res.json();
+  document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+}
+</script>

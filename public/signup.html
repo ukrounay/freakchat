@@ -1,0 +1,22 @@
+<h2>Sign Up</h2>
+<input id="username" placeholder="Username" />
+<input id="email" placeholder="Email" />
+<input id="password" type="password" placeholder="Password" />
+<button onclick="signup()">Sign Up</button>
+
+<script>
+async function signup() {
+  const res = await fetch('/api/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username: document.getElementById('username').value,
+      email: document.getElementById('email').value,
+      password: document.getElementById('password').value
+    })
+  });
+  const data = await res.json();
+  if (res.ok) alert("Account created");
+  else alert(data.error);
+}
+</script>

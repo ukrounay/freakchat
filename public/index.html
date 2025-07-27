@@ -82,9 +82,10 @@ function login() {
   .catch(() => alert('Login failed.'));
 }
 
+
 function getUser(username) {
   if (userCache.has(username)) return Promise.resolve(userCache.get(username));
-  return fetch(`/api/user?username=${encodeURIComponent(username)}`)
+  return fetch('/api/user/'+ encodeURIComponent(username))
     .then(res => res.json())
     .then(user => {
       userCache.set(username, user);
