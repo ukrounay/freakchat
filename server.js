@@ -1,45 +1,50 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const session = require('express-session');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcrypt');
 const { pool } = require('./db');
 
-
 const app = express();
 
+// Middleware
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static('public'));
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'dev-secret', // use .env in production
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false } // true if using HTTPS
+}));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// const fetch = (...args) =>
-//   import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
-
-// Session (super simple for demo)
-const sessions = new Map();
-
-// SIGNUP
+// SIGNUP (with session)
 app.post('/api/signup', async (req, res) => {
   const { username, password, email } = req.body;
-
-  const hash = await bcrypt.hash(password, 10);
-
   try {
+    const hash = await bcrypt.hash(password, 10);
+
     await pool.query(
       `INSERT INTO users (username, password, email) VALUES ($1, $2, $3)`,
       [username, hash, email]
     );
+
+    // Set session immediately after signup
+    req.session.user = { username, profile_picture: null };
     res.json({ success: true });
+
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// LOGIN
+
+// LOGIN (with session)
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
 
@@ -50,47 +55,52 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: "Invalid login" });
   }
 
-  const token = crypto.randomUUID();
-  sessions.set(token, user.username);
-  res.cookie('token', token, { httpOnly: true });
+  req.session.user = {
+    username: user.username,
+    profile_picture: user.profile_picture
+  };
+
   res.json({ success: true });
 });
 
-// LOGOUT
+
+// LOGOUT (clear session)
 app.post('/api/logout', (req, res) => {
-  const token = req.cookies.token;
-  sessions.delete(token);
-  res.clearCookie('token');
-  res.json({ success: true });
+  req.session.destroy(err => {
+    if (err) {
+      return res.status(500).json({ error: "Logout failed" });
+    }
+    res.clearCookie('connect.sid');
+    res.json({ success: true });
+  });
 });
 
-// CURRENT USER
-app.get('/api/me', async (req, res) => {
-  const username = sessions.get(req.cookies.token);
-  if (!username) return res.status(401).json({ error: "Not logged in" });
 
-  const result = await pool.query(`SELECT username, email, about, profile_picture FROM users WHERE username = $1`, [username]);
-  res.json(result.rows[0]);
+// CURRENT SESSION USER
+app.get('/api/user', (req, res) => {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  res.json(req.session.user);
 });
 
-// GET USER BY USERNAME
+
+// GET USER BY USERNAME (public)
 app.get('/api/user/:username', async (req, res) => {
-  const result = await pool.query(`SELECT username, about, profile_picture FROM users WHERE username = $1`, [req.params.username]);
+  const result = await pool.query(
+    `SELECT username, about, profile_picture FROM users WHERE username = $1`,
+    [req.params.username]
+  );
   if (result.rowCount === 0) return res.status(404).json({ error: "User not found" });
   res.json(result.rows[0]);
 });
 
 
-
-
-
-// Web Socket
-
+// WebSocket Chat Broadcast
 wss.on('connection', (ws) => {
   console.log('Client connected');
-  
-  ws.on('message', (message) => {
 
+  ws.on('message', (message) => {
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message);
@@ -100,6 +110,7 @@ wss.on('connection', (ws) => {
 });
 
 
+// Start Server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

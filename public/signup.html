@@ -9,6 +9,7 @@ async function signup() {
   const res = await fetch('/api/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({
       username: document.getElementById('username').value,
       email: document.getElementById('email').value,
