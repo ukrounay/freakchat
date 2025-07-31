@@ -1,24 +1,45 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- meta tags -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <!-- standard tags -->
   <title>FreakChat</title>
 
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans&display=swap&subset=latin,latin-ext,cyrillic,cyrillic-ext" rel="stylesheet">
+  <!-- local styles -->
   <link rel="stylesheet" href="styles/base.css">
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- referenced styles -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans&display=swap&subset=latin,latin-ext,cyrillic,cyrillic-ext" rel="stylesheet">
+
+  <!-- referenced scripts -->
+  <script src="https://kit.fontawesome.com/607590d81b.js" crossorigin="anonymous"></script>
+
+  <!-- local scripts -->
+
 
 </head>
 <body>
 
   <div id="loginBox">
+    <span class="logo">
+      <img src="styles/images/logo.svg" alt="logo-image">
+      <span>
+        <span class="color">freak</span>
+        chat
+      </span>
+    </span>
+
+    <h2>Log In</h2>
+
     <input id="loginUser" placeholder="Username" />
     <input id="loginPass" type="password" placeholder="Password" />
+    
     <button onclick="login()">Log In</button>
   </div>
 
-  <div id="chatUI" style="display:none;">
+  <!-- <div id="chatUI" style="display:none;">
 
     <div class="chat-container">
       <header>
@@ -44,7 +65,116 @@
       </div>
     </div>
 
+  </div> -->
+
+  
+<div class="chat-ui-wrapper" id="chatUI" style="display:none;">
+
+  <nav>
+    <span class="logo">
+      <img src="styles/images/logo.svg" alt="logo-image">
+      <span>
+        <span class="color">freak</span>
+        chat
+      </span>
+    </span>
+    <div class="nav-controls">
+      <!-- <button onclick="shareMessages()">Share Saved Messages</button> -->
+      <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+    </div>
+  </nav>
+
+  <aside class="chat-sidebar" id="chatSidebar">
+    <p>Start new chat</p>
+    <div class="new-chat">
+      <input id="chatRecipient" placeholder="username" />
+      <button onclick="startChat()">+</button>
+    </div>
+    <p>Chats</p>
+    <ul id="chatList"></ul>
+  </aside>
+
+  <div class="chat-main">
+    <div class="chat-container">
+      <div id="messages"></div>
+      <div class="chat-input">
+        <textarea id="msgInput" placeholder="Type a message..." rows="1"></textarea>
+
+        <input type="file" id="imgInput" accept="image/*" style="display: none;" />
+
+        <button onclick="triggerImagePicker()"><i class="fa-regular fa-image"></i></button>
+
+        <button onclick="sendMessage()"><i class="fa-solid fa-arrow-up"></i></button>
+
+        <div id="imgPreviewContainer" style="display: none; position: relative; width: 100px; margin-top: 10px;">
+          <img id="imgPreview" style="width: 100%; border-radius: 4px; cursor: pointer;" />
+          <button onclick="clearImage()" style="
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: red;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0;
+          ">✕</button>
+        </div>
+        <script>
+          const fileInput = document.getElementById("imgInput");
+          const previewContainer = document.getElementById("imgPreviewContainer");
+          const previewImage = document.getElementById("imgPreview");
+
+          function triggerImagePicker() {
+            fileInput.click();
+          }
+
+          fileInput.addEventListener("change", () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = () => {
+              previewImage.src = reader.result;
+              previewContainer.style.display = "block";
+
+              // clicking image also clears
+              previewImage.onclick = clearImage;
+            };
+            reader.readAsDataURL(file);
+          });
+
+          function clearImage() {
+            fileInput.value = "";
+            previewContainer.style.display = "none";
+            previewImage.src = "";
+          }
+
+
+          const msgInput = document.getElementById("msgInput");
+
+          msgInput.addEventListener("input", () => {
+            msgInput.style.height = "auto"; // reset
+            msgInput.style.height = Math.min(msgInput.scrollHeight, 240) + "px"; // max ~10 lines
+          });
+
+
+        </script>
+      </div>
+    </div>
   </div>
+</div>
+
+<script>
+  function toggleSidebar() {
+    document.getElementById('chatSidebar').classList.toggle('visible');
+  }
+</script>
+
+
 
 <script>
 
@@ -68,6 +198,41 @@ warnEl.style.display = "none";
 warnEl.textContent = "⚠️ IndexedDB not supported — messages won’t be saved locally.";
 document.body.prepend(warnEl);
 
+
+let activeChat = null;
+const chats = new Map(); // username -> messages
+
+function startChat() {
+  const username = document.getElementById('chatRecipient').value.trim();
+  if (!username || username === currentUser.username) return alert("Invalid username");
+
+  if (!chats.has(username)) {
+    chats.set(username, []);
+    const li = document.createElement('li');
+    li.textContent = username;
+    li.onclick = () => selectChat(username);
+    li.dataset.username = username;
+    document.getElementById('chatList').appendChild(li);
+  }
+
+  selectChat(username);
+  document.getElementById('chatRecipient').value = "";
+}
+
+function selectChat(username) {
+  activeChat = username;
+
+  // Mark as active in UI
+  const items = document.querySelectorAll('#chatList li');
+  items.forEach(i => i.classList.remove('active'));
+  const activeItem = [...items].find(i => i.dataset.username === username);
+  if (activeItem) activeItem.classList.add('active');
+
+  // Render this chat
+  renderMessages(chats.get(username));
+}
+
+
 if (!window.indexedDB) {
   warnEl.style.display = "block";
 } else {
@@ -79,24 +244,46 @@ if (!window.indexedDB) {
   request.onsuccess = () => {
     db = request.result;
     savingEnabled = true;
-    loadAndRenderMessages();
   };
   request.onerror = () => warnEl.style.display = "block";
 }
 
 
+function authorize() {
+  // After successful login or auto-login:
+  socket.send(JSON.stringify({ type: 'auth', username: currentUser.username }));
+  console.log("authorizing")
+}
+
 // Check if already signed in
+// fetch('/api/user', { credentials: 'include' })
+//   .then(res => res.json())
+//   .then(user => {
+//     if (!user || user.username || user.error) return;
+//     currentUser = user;
+//     userCache.set(user.username, user);
+//     document.getElementById('loginBox').style.display = 'none';
+//     document.getElementById('chatUI').style.display = 'flex';
+//     authorize()
+//     loadAndRenderMessages();
+//   })
+//   .catch(err => console.warn("Auto-login failed:", err));
+
 fetch('/api/user', { credentials: 'include' })
-  .then(res => res.json())
+  .then(async (res) => {
+    if (!res.ok) throw new Error('Not authorized');
+    return res.json();
+  })
   .then(user => {
-    if (!user || user.error) return;
+    if (!user || !user.username) return;
     currentUser = user;
     userCache.set(user.username, user);
     document.getElementById('loginBox').style.display = 'none';
-    document.getElementById('chatUI').style.display = 'block';
+    document.getElementById('chatUI').style.display = 'flex';
+    loadAndRenderMessages();
+    authorize();
   })
   .catch(err => console.warn("Auto-login failed:", err));
-
 
 
 function login() {
@@ -112,10 +299,13 @@ function login() {
   .then(res => res.json())
   .then(user => {
     if (user.error) return alert(user.error);
+    console.log("logged in, user: ", user)
     currentUser = user;
     userCache.set(user.username, user);
     document.getElementById('loginBox').style.display = 'none';
-    document.getElementById('chatUI').style.display = 'block';
+    document.getElementById('chatUI').style.display = 'flex';
+    authorize()
+    loadAndRenderMessages();
   })
   .catch(() => alert('Login failed.'));
 }
@@ -131,12 +321,67 @@ function getUser(username) {
     });
 }
 
+// function loadAndRenderMessages() {
+//   if (!savingEnabled) return;
+//   const tx = db.transaction("messages", "readonly");
+//   const store = tx.objectStore("messages");
+//   const req = store.getAll();
+//   req.onsuccess = () => renderMessages(req.result);
+// }
+
+
 function loadAndRenderMessages() {
   if (!savingEnabled) return;
+
   const tx = db.transaction("messages", "readonly");
   const store = tx.objectStore("messages");
   const req = store.getAll();
-  req.onsuccess = () => renderMessages(req.result);
+
+  req.onsuccess = () => {
+    const allMessages = req.result;
+
+    // Reset chat map
+    chats.clear();
+    document.getElementById('chatList').innerHTML = '';
+
+    // Organize messages into chat threads
+    allMessages.forEach(msg => {
+      const otherUser = msg.from === currentUser.username ? msg.to : msg.from;
+
+      if (!chats.has(otherUser)) {
+        chats.set(otherUser, []);
+
+        // Add to chat list UI
+        const li = document.createElement('li');
+        li.textContent = otherUser;
+        li.onclick = () => selectChat(otherUser);
+        li.dataset.username = otherUser;
+        document.getElementById('chatList').appendChild(li);
+      }
+
+      chats.get(otherUser).push(msg);
+    });
+
+    // chats.forEach((otherUser, messages)=>{
+    //   messages.sort((a, b) => a.time - b.time);
+    // })
+    // Render the sidebar
+    chatList.innerHTML = ''; // Clear old items
+
+    for (const [user] of chats) {
+      const li = document.createElement('li');
+      li.textContent = user;
+      li.onclick = () => selectChat(user);
+      li.dataset.username = user;
+      document.getElementById('chatList').appendChild(li);
+    }
+
+
+    // Re-render active chat
+    if (activeChat && chats.has(activeChat)) {
+      renderMessages(chats.get(activeChat));
+    }
+  };
 }
 
 function saveMessage(msg) {
@@ -146,6 +391,8 @@ function saveMessage(msg) {
   store.put(msg);
 }
 
+
+
 function deleteMessage(id) {
   if (!savingEnabled) return;
   const tx = db.transaction("messages", "readwrite");
@@ -154,51 +401,56 @@ function deleteMessage(id) {
   loadAndRenderMessages();
 }
 
+
 function handleIncoming(msg) {
-  msg.id = `${msg.name}_${msg.time}`;
-  if (!savingEnabled) return renderMessages([msg]);
+  msg.id = `${msg.from}_${msg.time}`;
+  const otherUser = msg.from === currentUser.username ? msg.to : msg.from;
 
-  const tx = db.transaction("messages", "readwrite");
-  const store = tx.objectStore("messages");
-  const getReq = store.get(msg.id);
+  if (!chats.has(otherUser)) {
+    chats.set(otherUser, []);
+    const li = document.createElement('li');
+    li.textContent = otherUser;
+    li.onclick = () => selectChat(otherUser);
+    li.dataset.username = otherUser;
+    document.getElementById('chatList').appendChild(li);
+  }
 
-  getReq.onsuccess = () => {
-    const existing = getReq.result;
-    if (existing) {
-      if (msg.message) existing.message = msg.message;
-      if (msg.image) existing.image = msg.image;
-      store.put(existing);
-    } else {
-      store.put(msg);
-    }
-    loadAndRenderMessages();
-  };
+  chats.get(otherUser).push(msg);
+
+  if (activeChat === otherUser) {
+    renderMessages(chats.get(otherUser));
+  }
+
+  saveMessage(msg);
 }
 
+
 function renderMessages(messages) {
+  console.log(messages)
   const container = document.getElementById('messages');
   let should_scroll_to_newest = (container.scrollHeight - container.scrollTop) > 20;
 
   container.innerHTML = "";
   const chat_messages = document.createElement("div");
   chat_messages.classList.add("chat-messages");
+
   messages.sort((a, b) => a.time - b.time);
 
   messages.forEach(msg => {
-    getUser(msg.name).then(user => {
+    getUser(msg.from).then(user => {
       const m_cont_obj = document.createElement('div');
-      m_cont_obj.classList.add("message-container")
-      
-      const m_obj = document.createElement('div');
-      m_obj.classList.add("message")
+      m_cont_obj.classList.add("message-container");
 
-      if (currentUser && msg.name == currentUser.username) m_cont_obj.classList.add("user");
+      const m_obj = document.createElement('div');
+      m_obj.classList.add("message");
+
+      if (currentUser && msg.from === currentUser.username) m_cont_obj.classList.add("user");
 
       m_obj.innerHTML = `
-      <p class="message-header">
-        <strong>@${msg.name}</strong> 
-        <span class="timestamp">${new Date(msg.time).toLocaleTimeString()}</span>
-      </p>
+        <p class="message-header">
+          <strong>@${msg.from}</strong> 
+          <span class="timestamp">${new Date(msg.time).toLocaleTimeString()}</span>
+        </p>
       `;
 
       if (msg.image) {
@@ -206,35 +458,43 @@ function renderMessages(messages) {
         img.src = msg.image;
         m_obj.appendChild(img);
       }
-      if (msg.message) {
+
+      if (msg.ciphertext) {
         const p = document.createElement('p');
-        p.textContent = msg.message;
+        p.textContent = msg.ciphertext;
         m_obj.appendChild(p);
       }
-      
-      m_cont_obj.appendChild(m_obj)
+
+      m_cont_obj.appendChild(m_obj);
 
       if (savingEnabled) {
         const btn = document.createElement('button');
-        btn.textContent = "🗑 Delete";
+        btn.classList.add("delete-btn")
+        btn.innerHTML =`<i class="fa-regular fa-trash-can"></i>`;
+
         btn.onclick = () => deleteMessage(msg.id);
-        m_cont_obj.appendChild(btn)
+        m_cont_obj.appendChild(btn);
       }
+
       chat_messages.appendChild(m_cont_obj);
     });
   });
-  container.appendChild(chat_messages);
 
-  if (should_scroll_to_newest) container.scrollTop = container.scrollHeight;
-  console.log(should_scroll_to_newest, container.scrollTop, container.scrollHeight)
-  
+  container.appendChild(chat_messages);
+  console.log(container.scrollHeight)
+  if (should_scroll_to_newest) container.scrollTo({
+    top: container.scrollHeight,
+    left: 0,
+    behavior: "instant",
+  });
 }
 
-socket.onmessage = async (event) => {
-  const raw = await event.data.text();
-  const msg = JSON.parse(raw);
+
+socket.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
   handleIncoming(msg);
 };
+
 
 const input = document.getElementById('msgInput');
 
@@ -245,45 +505,46 @@ input.addEventListener('keydown', function(event) {
   }
 });
 
+
 function sendMessage() {
-  if (!currentUser || socket.readyState !== WebSocket.OPEN || !input.value) return;
+  if (!currentUser || socket.readyState !== WebSocket.OPEN || (!input.value && !fileInput.files.length) || !activeChat) return;
 
   const msg = {
-    name: currentUser.username,
-    message: input.value,
-    time: Date.now(),
-    image: null
+    type: "message",
+    from: currentUser.username,
+    to: activeChat,
+    ciphertext: input.value,
+    image: null,
+    time: Date.now()
   };
-  socket.send(JSON.stringify(msg));
-  input.value = "";
-}
 
-function sendImage() {
-  const file = document.getElementById('imgInput').files[0];
-  if (!currentUser || !file || socket.readyState !== WebSocket.OPEN) return;
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    const msg = {
-      name: currentUser.username,
-      message: "",
-      image: reader.result,
-      time: Date.now()
+  if (fileInput.files.length > 0) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      msg.image = reader.result;
+      socket.send(JSON.stringify(msg));
+      handleIncoming(msg); // local echo
+      input.value = "";
+      clearImage(); // also clears preview and file input
     };
+    reader.readAsDataURL(fileInput.files[0]);
+  } else {
     socket.send(JSON.stringify(msg));
-  };
-  reader.readAsDataURL(file);
+    handleIncoming(msg); // local echo
+    input.value = "";
+  }
 }
 
-function shareMessages() {
-  if (!currentUser || !savingEnabled) return alert("Cannot share — not logged in or saving unavailable.");
-  const tx = db.transaction("messages", "readonly");
-  const store = tx.objectStore("messages");
-  const req = store.getAll();
-  req.onsuccess = () => {
-    req.result.forEach(m => socket.send(JSON.stringify(m)));
-  };
-}
+
+// function shareMessages() {
+//   if (!currentUser || !savingEnabled) return alert("Cannot share — not logged in or saving unavailable.");
+//   const tx = db.transaction("messages", "readonly");
+//   const store = tx.objectStore("messages");
+//   const req = store.getAll();
+//   req.onsuccess = () => {
+//     req.result.forEach(m => socket.send(JSON.stringify(m)));
+//   };
+// }
 </script>
 </body>
 </html>

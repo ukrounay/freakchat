@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Logging Out...</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding-top: 50px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Logging you out...</h2>
+  <p>You will be redirected shortly.</p>
+
+  <script>
+    fetch('/api/logout', {
+      method: 'POST',
+      credentials: 'include'
+    })
+    .then(() => {
+      document.querySelector('h2').textContent = 'Logged out!';
+      setTimeout(() => {
+        window.location.href = '/'; // change this if your login page has a different name
+      }, 2000);
+    })
+    .catch(() => {
+      document.querySelector('h2').textContent = 'Logout failed.';
+    });
+  </script>
+
+</body>
+</html>

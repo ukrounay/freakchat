@@ -1,8 +1,32 @@
-<h2>Sign Up</h2>
-<input id="username" placeholder="Username" />
-<input id="email" placeholder="Email" />
-<input id="password" type="password" placeholder="Password" />
-<button onclick="signup()">Sign Up</button>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up</title>
+
+  <link rel="stylesheet" href="styles/base.css">
+
+</head>
+<body>
+
+  <div id="loginBox">
+    <span class="logo">
+      <img src="styles/images/logo.svg" alt="logo-image">
+      <span>
+        <span class="color">freak</span>
+        chat
+      </span>
+    </span>
+
+    <h2>Sign Up</h2>
+
+    <input id="username" placeholder="Username" />
+    <input id="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Password" />
+
+    <button onclick="signup()">Sign Up</button>
+  </div>
 
 <script>
 async function signup() {
@@ -21,3 +45,7 @@ async function signup() {
   else alert(data.error);
 }
 </script>
+
+  
+</body>
+</html>
