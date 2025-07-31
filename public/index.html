@@ -35,37 +35,14 @@
 
     <input id="loginUser" placeholder="Username" />
     <input id="loginPass" type="password" placeholder="Password" />
-    
+
+    <p>
+      Don't have an account? <a class="link" href="signup.html">Sign Up</a>
+    </p>
+
     <button onclick="login()">Log In</button>
   </div>
 
-  <!-- <div id="chatUI" style="display:none;">
-
-    <div class="chat-container">
-      <header>
-        <nav>
-          <span class="logo">
-            <span>freak</span>chat
-          </span>
-          <div>
-            <button onclick="shareMessages()">Share Saved Messages</button>
-          </div>
-        </nav>
-      </header>
-      <div id="messages"></div>
-      <div class="chat-input">
-        <p>
-          <textarea id="msgInput" placeholder="Type a message..."></textarea>
-          <button onclick="sendMessage()">Send</button>
-        </p>
-        <p>
-          <input type="file" id="imgInput" accept="image/*" />
-          <button onclick="sendImage()">Send Image</button>
-        </p>
-      </div>
-    </div>
-
-  </div> -->
 
   
 <div class="chat-ui-wrapper" id="chatUI" style="display:none;">
@@ -85,13 +62,18 @@
   </nav>
 
   <aside class="chat-sidebar" id="chatSidebar">
-    <p>Start new chat</p>
-    <div class="new-chat">
-      <input id="chatRecipient" placeholder="username" />
-      <button onclick="startChat()">+</button>
+    <div class="top">
+      <p>Start new chat</p>
+      <div class="new-chat">
+        <input id="chatRecipient" placeholder="username" />
+        <button onclick="startChat()">+</button>
+      </div>
+      <p>Chats</p>
+      <ul id="chatList"></ul>
     </div>
-    <p>Chats</p>
-    <ul id="chatList"></ul>
+    <div class="bottom">
+      <a class="link-btn" href="logout.html"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a>
+    </div>
   </aside>
 
   <div class="chat-main">
@@ -180,6 +162,8 @@
 
 
 
+const messageSound = new Audio('/sounds/ping.wav');
+messageSound.volume = 0.5;
 
 
 let currentUser = null;
@@ -340,6 +324,9 @@ function loadAndRenderMessages() {
   req.onsuccess = () => {
     const allMessages = req.result;
 
+    allMessages.sort((a, b) => a.time - b.time);
+
+
     // Reset chat map
     chats.clear();
     document.getElementById('chatList').innerHTML = '';
@@ -422,11 +409,84 @@ function handleIncoming(msg) {
   }
 
   saveMessage(msg);
+
+  // Play sound if message is from another user
+  if (msg.from !== currentUser.username) {
+    messageSound.currentTime = 0;
+    messageSound.play().catch(err => {
+      console.warn("Sound play failed:", err);
+    });
+  }
+
 }
 
 
+// function renderMessages(messages) {
+//   console.log(messages)
+//   const container = document.getElementById('messages');
+//   let should_scroll_to_newest = (container.scrollHeight - container.scrollTop) > 20;
+
+//   container.innerHTML = "";
+//   const chat_messages = document.createElement("div");
+//   chat_messages.classList.add("chat-messages");
+
+//   messages.sort((a, b) => a.time - b.time);
+
+//   messages.forEach(msg => {
+//     getUser(msg.from).then(user => {
+//       const m_cont_obj = document.createElement('div');
+//       m_cont_obj.classList.add("message-container");
+
+//       const m_obj = document.createElement('div');
+//       m_obj.classList.add("message");
+
+//       if (currentUser && msg.from === currentUser.username) m_cont_obj.classList.add("user");
+
+//       m_obj.innerHTML = `
+//         <p class="message-header">
+//           <strong>@${msg.from}</strong> 
+//           <span class="timestamp">${new Date(msg.time).toLocaleTimeString()}</span>
+//         </p>
+//       `;
+
+//       if (msg.image) {
+//         const img = document.createElement('img');
+//         img.src = msg.image;
+//         m_obj.appendChild(img);
+//       }
+
+//       if (msg.ciphertext) {
+//         const text = document.createElement('p');
+//         text.innerHTML = linkify(msg.ciphertext);
+//         m_obj.appendChild(text);
+//       }
+
+//       m_cont_obj.appendChild(m_obj);
+
+//       if (savingEnabled) {
+//         const btn = document.createElement('button');
+//         btn.classList.add("delete-btn")
+//         btn.innerHTML =`<i class="fa-regular fa-trash-can"></i>`;
+
+//         btn.onclick = () => deleteMessage(msg.id);
+//         m_cont_obj.appendChild(btn);
+//       }
+
+//       chat_messages.appendChild(m_cont_obj);
+//     });
+//   });
+
+//   container.appendChild(chat_messages);
+//   console.log(container.scrollHeight)
+//   if (should_scroll_to_newest) container.scrollTo({
+//     top: container.scrollHeight,
+//     left: 0,
+//     behavior: "instant",
+//   });
+// }
+
+
 function renderMessages(messages) {
-  console.log(messages)
   const container = document.getElementById('messages');
   let should_scroll_to_newest = (container.scrollHeight - container.scrollTop) > 20;
 
@@ -436,7 +496,10 @@ function renderMessages(messages) {
 
   messages.sort((a, b) => a.time - b.time);
 
-  messages.forEach(msg => {
+  let prevUser = null;
+  let prevCont = null;
+
+  messages.forEach((msg, index) => {
     getUser(msg.from).then(user => {
       const m_cont_obj = document.createElement('div');
       m_cont_obj.classList.add("message-container");
@@ -444,9 +507,34 @@ function renderMessages(messages) {
       const m_obj = document.createElement('div');
       m_obj.classList.add("message");
 
-      if (currentUser && msg.from === currentUser.username) m_cont_obj.classList.add("user");
+      if (currentUser && msg.from === currentUser.username) {
+        m_cont_obj.classList.add("user");
+      }
+
+      // === Grouping logic ===
+      const next = messages[index + 1];
+      const nextUser = next?.from;
+
+      const isFirst = prevUser !== msg.from;
+      const isLast = nextUser !== msg.from;
+
+      if (isFirst && isLast) {
+        m_cont_obj.classList.add("group-single");
+      } else if (isFirst) {
+        m_cont_obj.classList.add("group-first");
+      } else if (isLast) {
+        m_cont_obj.classList.add("group-last");
+      } else {
+        m_cont_obj.classList.add("group-middle");
+      }
+
+      // ======================
 
       m_obj.innerHTML = `
+        <svg class="rounded-corner" width="12px" height="12px" version="1.1" viewBox="0 0 12 12" xmlns="http://www.w3.org/2000/svg">
+          <path class="corner" d="m 12 0 a 12 12 0 0 1 -12 12 h 12"/>
+        </svg>
+
         <p class="message-header">
           <strong>@${msg.from}</strong> 
           <span class="timestamp">${new Date(msg.time).toLocaleTimeString()}</span>
@@ -460,33 +548,39 @@ function renderMessages(messages) {
       }
 
       if (msg.ciphertext) {
-        const p = document.createElement('p');
-        p.textContent = msg.ciphertext;
-        m_obj.appendChild(p);
+        const text = document.createElement('p');
+        text.innerHTML = linkify(msg.ciphertext);
+        m_obj.appendChild(text);
       }
 
       m_cont_obj.appendChild(m_obj);
 
       if (savingEnabled) {
         const btn = document.createElement('button');
-        btn.classList.add("delete-btn")
-        btn.innerHTML =`<i class="fa-regular fa-trash-can"></i>`;
-
+        btn.classList.add("delete-btn");
+        btn.innerHTML = `<i class="fa-regular fa-trash-can"></i>`;
         btn.onclick = () => deleteMessage(msg.id);
         m_cont_obj.appendChild(btn);
       }
 
       chat_messages.appendChild(m_cont_obj);
+
+      prevUser = msg.from;
+      prevCont = m_cont_obj;
     });
   });
 
   container.appendChild(chat_messages);
-  console.log(container.scrollHeight)
-  if (should_scroll_to_newest) container.scrollTo({
-    top: container.scrollHeight,
-    left: 0,
-    behavior: "instant",
+  requestAnimationFrame(() => {
+    if (should_scroll_to_newest) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        left: 0,
+        behavior: "auto"
+      });
+    }
   });
+
 }
 
 
@@ -533,6 +627,15 @@ function sendMessage() {
     handleIncoming(msg); // local echo
     input.value = "";
   }
+}
+
+
+function linkify(text) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text.replace(urlRegex, (url) => {
+    const safeURL = url.replace(/"/g, '&quot;');
+    return `<a href="${safeURL}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+  });
 }
 
 
