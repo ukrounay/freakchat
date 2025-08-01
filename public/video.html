@@ -95,9 +95,9 @@
     }
 
     async function createPeer(shareMedia = true) {
-      peer = new RTCPeerConnection();
+    //   peer = new RTCPeerConnection();
 
-        // peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+        peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
 
         // if (shareMedia && localStream) {
         //     localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
