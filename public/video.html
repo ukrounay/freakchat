@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FreakChat Video Call</title>
+  <style>
+    video { width: 45%; margin: 1%; background: #000; border-radius: 8px; }
+    body { font-family: sans-serif; text-align: center; padding: 1rem; }
+    input, button { padding: 0.5rem; margin: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h2>FreakChat Video Call</h2>
+
+  <p>
+    Your username: <input id="username" placeholder="e.g. alice" />
+    <button onclick="connect()">Connect</button>
+  </p>
+
+  <p>
+    Call user: <input id="target" placeholder="e.g. bob" />
+    <button onclick="callUser()">Call</button>
+  </p>
+
+  <div>
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
+
+  <script>
+    let ws;
+    let peer;
+    let localStream;
+    const usernameInput = document.getElementById("username");
+    const targetInput = document.getElementById("target");
+    const localVideo = document.getElementById("localVideo");
+    const remoteVideo = document.getElementById("remoteVideo");
+
+    async function preloadMedia() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localVideo.srcObject = localStream;
+            console.log("Local media preloaded.");
+        } catch (err) {
+            console.warn("Could not preload media:", err.message);
+        }
+    }
+
+
+    async function connect() {
+        await preloadMedia(); // warm up mic/camera if available
+
+      const you = usernameInput.value.trim();
+      if (!you) return alert("Enter your username first.");
+
+      ws = new WebSocket("ws://" + location.host + "/ws/video");
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "join", username: you }));
+        console.log("Connected to signaling server as", you);
+      };
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+        console.log("Received:", msg);
+
+        if (msg.type === "offer") {
+          await createPeer(true); // callee shares media
+          await peer.setRemoteDescription(new RTCSessionDescription(msg.offer));
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "answer", to: msg.from, answer }));
+        }
+
+        if (msg.type === "answer") {
+          await peer.setRemoteDescription(new RTCSessionDescription(msg.answer));
+        }
+
+        if (msg.type === "candidate") {
+          await peer.addIceCandidate(new RTCIceCandidate(msg.candidate));
+        }
+      };
+    }
+
+    async function callUser() {
+      const target = targetInput.value.trim();
+      if (!target) return alert("Enter a user to call.");
+
+      await createPeer(false); // caller might not share media
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      ws.send(JSON.stringify({ type: "offer", to: target, offer }));
+    }
+
+    async function createPeer(shareMedia = true) {
+      peer = new RTCPeerConnection();
+
+        // peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+
+        // if (shareMedia && localStream) {
+        //     localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+        // }
+
+
+
+      if (shareMedia && navigator.mediaDevices?.getUserMedia) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          localVideo.srcObject = localStream;
+          localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+          console.log("Local media attached.");
+        } catch (err) {
+          console.warn("Media not available:", err.message);
+        }
+      }
+
+      peer.ontrack = (e) => {
+        console.log("Remote stream received");
+        remoteVideo.srcObject = e.streams[0];
+      };
+
+      peer.onicecandidate = (e) => {
+        if (e.candidate) {
+          const target = targetInput.value.trim();
+          if (target) {
+            ws.send(JSON.stringify({ type: "candidate", to: target, candidate: e.candidate }));
+          }
+        }
+      };
+    }
+  </script>
+</body>
+</html>

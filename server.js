@@ -20,7 +20,7 @@ app.use(session({
 }));
 
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ noServer: true });
 
 
 // SIGNUP (with session)
@@ -221,6 +221,23 @@ server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+server.on('upgrade', (req, socket, head) => {
+  const { url } = req;
+
+  if (url === '/' || url === '') {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  } else if (url === '/ws/video') {
+    videoWSS.handleUpgrade(req, socket, head, (ws) => {
+      videoWSS.emit('connection', ws, req);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+
 
 // Graceful shutdown
 function shutdown() {
@@ -253,3 +270,39 @@ function shutdown() {
 // Handle exit signals
 process.on('SIGINT', shutdown);  // Ctrl+C
 process.on('SIGTERM', shutdown); // kill or Docker stop
+
+
+// WebSocket server for WebRTC signaling (video calls)
+const videoWSS = new WebSocket.Server({ noServer: true });
+
+const videoPeers = new Map();
+
+videoWSS.on('connection', (ws) => {
+  let username = null;
+
+  ws.on('message', (msg) => {
+    const data = JSON.parse(msg);
+
+    // Client introduces itself
+    if (data.type === 'join') {
+      username = data.username;
+      videoPeers.set(username, ws);
+      console.log(`Video client joined: ${username}`);
+      return;
+    }
+
+    // Forward signaling messages
+    const targetSocket = videoPeers.get(data.to);
+    if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
+      targetSocket.send(JSON.stringify({ ...data, from: username }));
+      console.log(username, " sending message to ", data.to)
+    }
+  });
+
+  ws.on('close', () => {
+    if (username) {
+      videoPeers.delete(username);
+      console.log(`Video client disconnected: ${username}`);
+    }
+  });
+});
