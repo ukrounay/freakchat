@@ -28,6 +28,8 @@
   </div>
 
   <script>
+    const protocol = location.protocol === "https:" ? "wss" : "ws";
+
     let ws;
     let peer;
     let localStream;
@@ -53,7 +55,7 @@
       const you = usernameInput.value.trim();
       if (!you) return alert("Enter your username first.");
 
-      ws = new WebSocket("ws://" + location.host + "/ws/video");
+      ws = new WebSocket(`${protocol}://${location.host}/ws/video`);
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join", username: you }));
